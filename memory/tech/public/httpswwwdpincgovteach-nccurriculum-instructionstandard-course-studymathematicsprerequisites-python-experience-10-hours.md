@@ -6,7 +6,6 @@ machine_name: User-492
 slug: httpswwwdpincgovteach-nccurriculum-instructionstandard-course-studymathematicsprerequisites-python-experience-10-hours
 ---
 
-https://www.dpi.nc.gov/teach-nc/curriculum-instruction/standard-course-study/mathematics
 
 Prerequisites: Python experience (10 hours at least) required
 
@@ -21,3 +20,6 @@ https://www.amazon.com/dp/B00MARDJZ4
 https://www.amazon.com/dp/B074B4P7KD
         4.        Raspberry Pi Starter Kit (includes jumper wires, sensors, etc.)
 https://www.amazon.com/dp/B06W54L7B5
+
+hi my name is shreyansh
+
