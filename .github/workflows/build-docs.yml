@@ -1,36 +1,130 @@
-name: Build Docs
+name: Build Details and Orama Index
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
-      - 'docs/**'
-      - '.github/scripts/**'
-  workflow_dispatch:
+      - 'src/assets/docs/**/*.md'
 
 jobs:
-  build-docs:
+  build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: '18'
 
       - name: Install dependencies
+        run: npm install marked @orama/orama @tensorflow/tfjs-node @tensorflow-models/universal-sentence-encoder -g
+
+      - name: Build Manifest, JSON Chunks, and Orama Index
         run: |
-          echo '{"type":"module"}' > package.json
-          npm install glob gray-matter marked @orama/orama
+          mkdir -p src/assets/docs/content
+          cat << 'EOF' > builder.mjs
+          import fs from 'fs';
+          import path from 'path';
+          import marked from 'marked';
+          import { create, insert, save } from '@orama/orama';
+          import '@tensorflow/tfjs-node';
+          import * as use from '@tensorflow-models/universal-sentence-encoder';
 
-      - name: Run docs build script
-        run: node .github/scripts/build-docs.mjs
+          const docsDir = path.join(process.cwd(), 'src', 'assets', 'docs');
+          const contentDir = path.join(docsDir, 'content');
+          const manifestPath = path.join(docsDir, 'manifest.json');
+          const oramaPath = path.join(docsDir, 'orama-index.json');
+          
+          let manifest = [];
 
-      - name: Commit generated assets
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore: rebuild docs index"
-          file_pattern: src/assets/docs/**
+          function ensureDir(dir) {
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          }
+
+          async function build() {
+            console.log('Loading Universal Sentence Encoder (Orama native)...');
+            const extractor = await use.load();
+
+            // Create the Orama Index schema with natively integrated vector support
+            const db = await create({
+              schema: {
+                id: 'string',
+                title: 'string',
+                category: 'string',
+                content: 'string',
+                embeddings: 'vector[512]'
+              }
+            });
+
+            async function processDirAsync(dir) {
+              if (!fs.existsSync(dir)) return;
+              const files = fs.readdirSync(dir);
+              
+              for (const f of files) {
+                const dirPath = path.join(dir, f);
+                
+                if (fs.statSync(dirPath).isDirectory()) {
+                   await processDirAsync(dirPath);
+                } else if (f.endsWith('.md')) {
+                  const slug = path.relative(docsDir, dirPath).replace(/\.md$/, '');
+                  const title = path.basename(dirPath, '.md').replace(/-/g, ' ');
+                  const category = slug.split('/')[0] || 'default';
+
+                  manifest.push({ slug, title, category });
+
+                  const rawContent = fs.readFileSync(dirPath, 'utf-8');
+                  const htmlContent = marked.parse(rawContent);
+
+                  const sanitizedId = slug.replace(/\//g, '_');
+                  fs.writeFileSync(
+                    path.join(contentDir, `${sanitizedId}.json`),
+                    JSON.stringify({ id: slug, html: htmlContent })
+                  );
+
+                  // Manually generate the 512-dimension vector to bypass Orama NodeJS async hook bugs
+                  const textToEmbed = `${title}. ${rawContent}`;
+                  const tensor = await extractor.embed([textToEmbed]);
+                  const vectorArray = Array.from(tensor.dataSync());
+
+                  // Insert into Orama using exactly what @orama/plugin-embeddings would have produced
+                  await insert(db, {
+                    id: slug,
+                    title: title,
+                    category: category,
+                    content: rawContent,
+                    embeddings: vectorArray
+                  });
+                  console.log(`Indexed: ${title}`);
+                }
+              }
+            }
+
+            ensureDir(contentDir);
+            await processDirAsync(docsDir);
+
+            fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+            
+            // Save the natively embedded Orama index out to JSON
+            const indexExport = await save(db);
+            fs.writeFileSync(oramaPath, JSON.stringify(indexExport));
+            
+            console.log(`Successfully generated manifest and Orama embeddings for ${manifest.length} items.`);
+          }
+          
+          build().catch(console.error);
+          EOF
+          
+          NODE_PATH=$(npm root -g) node builder.mjs
+
+      - name: Commit and Push Changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add src/assets/docs/manifest.json src/assets/docs/content/ src/assets/docs/orama-index.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: auto-generate manifest, chunks, and orama embeddings" && git push)
