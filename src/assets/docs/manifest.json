@@ -1,18 +1,17 @@
 [
   {
-    "slug": "tech/public/memoryshare-your-col",
-    "title": "memoryshare-your-col"
-  },
-  {
-    "slug": "tech/public/httpswwwdpincgovteach-nccurriculum-instructionstandard-course-studymathematicsprerequisites-python-experience-10-hours",
-    "title": "httpswwwdpincgovteach-nccurriculum-instructionstandard-course-studymathematicsprerequisites-python-experience-10-hours"
+    "slug": "casual/public/hey--whats-up-this",
+    "title": "hey  whats up this",
+    "category": "casual"
   },
   {
     "slug": "casual/public/mac-recoveryalat-wren---w00d1110rama",
-    "title": "mac-recoveryalat-wren---w00d1110rama"
+    "title": "mac recoveryalat wren   w00d1110rama",
+    "category": "casual"
   },
   {
-    "slug": "casual/public/hey--whats-up-this",
-    "title": "hey--whats-up-this"
+    "slug": "tech/public/memoryshare-your-col",
+    "title": "memoryshare your col",
+    "category": "tech"
   }
 ]
