@@ -1,54 +1,62 @@
 name: Build Details and Orama Index
+
 on:
   push:
     branches:
       - main
     paths:
-      - 'docs/**' # Trigger when files in the root /docs folder change!
+      - 'docs/**'
       - '.github/workflows/build-memory.yml'
-  workflow_dispatch: # Allows you to manually run the indexer from GitHub's Actions tab
+  workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
+
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
+
       - name: Install dependencies
-        run: npm install marked @orama/orama @tensorflow/tfjs-node @tensorflow-models/universal-sentence-encoder -g
+        run: |
+          echo '{"type":"module"}' > package.json
+          npm install marked @orama/orama @tensorflow/tfjs-node @tensorflow-models/universal-sentence-encoder
+
       - name: Build Manifest, JSON Chunks, and Orama Index
         run: |
-          # Ensure the output directory exists
           mkdir -p src/assets/docs/content
-          
+
           cat << 'EOF' > builder.mjs
           import fs from 'fs';
           import path from 'path';
-          import marked from 'marked';
+          import { marked } from 'marked';
           import { create, insert, save } from '@orama/orama';
           import '@tensorflow/tfjs-node';
           import * as use from '@tensorflow-models/universal-sentence-encoder';
-          // Correct Path Configuration:
-          // SOURCE: Root /docs folder
-          // OUTPUT: src/assets/docs (as expected by the frontend code)
+
           const sourceDir = path.join(process.cwd(), 'docs');
           const outputDir = path.join(process.cwd(), 'src', 'assets', 'docs');
           const contentDir = path.join(outputDir, 'content');
           const manifestPath = path.join(outputDir, 'manifest.json');
           const oramaPath = path.join(outputDir, 'orama-index.json');
-          
+
           let manifest = [];
+
           function ensureDir(dir) {
             if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
           }
+
           async function build() {
             console.log('Loading Universal Sentence Encoder...');
             const extractor = await use.load();
+
             const db = await create({
               schema: {
                 id: 'string',
@@ -58,61 +66,68 @@ jobs:
                 embeddings: 'vector[512]'
               }
             });
+
             async function processDirAsync(dir) {
               if (!fs.existsSync(dir)) return;
               const files = fs.readdirSync(dir);
-              
+
               for (const f of files) {
                 const dirPath = path.join(dir, f);
-                
+
                 if (fs.statSync(dirPath).isDirectory()) {
-                   await processDirAsync(dirPath);
+                  await processDirAsync(dirPath);
                 } else if (f.endsWith('.md')) {
-                  // We calculate the slug relative to the source doc folder
                   const slug = path.relative(sourceDir, dirPath).replace(/\.md$/, '');
                   const title = path.basename(dirPath, '.md').replace(/-/g, ' ');
                   const category = slug.split('/')[0] || 'default';
+
                   manifest.push({ slug, title, category });
+
                   const rawContent = fs.readFileSync(dirPath, 'utf-8');
-                  const htmlContent = marked.parse(rawContent);
+                  const htmlContent = marked(rawContent);
                   const sanitizedId = slug.replace(/\//g, '_');
+
                   fs.writeFileSync(
                     path.join(contentDir, `${sanitizedId}.json`),
                     JSON.stringify({ id: slug, html: htmlContent })
                   );
-                  // Generate embeddings
+
                   const textToEmbed = `${title}. ${rawContent}`;
                   const tensor = await extractor.embed([textToEmbed]);
                   const vectorArray = Array.from(tensor.dataSync());
+
                   await insert(db, {
                     id: slug,
-                    title: title,
-                    category: category,
+                    title,
+                    category,
                     content: rawContent,
                     embeddings: vectorArray
                   });
+
                   console.log(`Indexed: ${slug}`);
                 }
               }
             }
+
             ensureDir(contentDir);
             await processDirAsync(sourceDir);
+
             fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-            
+
             const indexExport = await save(db);
             fs.writeFileSync(oramaPath, JSON.stringify(indexExport));
-            
+
             console.log(`Successfully processed ${manifest.length} documents.`);
           }
-          
+
           build().catch(console.error);
           EOF
-          
-          NODE_PATH=$(npm root -g) node builder.mjs
+
+          node builder.mjs
+
       - name: Commit and Push Changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          # We add the compiled files in src/assets/docs for the frontend to fetch
           git add src/assets/docs/manifest.json src/assets/docs/content/ src/assets/docs/orama-index.json
           git diff --quiet && git diff --staged --quiet || (git commit -m "chore: auto-generate manifest, chunks, and orama embeddings from /docs" && git push)
