@@ -17,17 +17,17 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: '18'
 
       - name: Install dependencies
         run: |
           echo '{"type":"module"}' > package.json
-          npm install marked @orama/orama @xenova/transformers
+          npm install marked @orama/orama @tensorflow/tfjs-node @tensorflow-models/universal-sentence-encoder
 
       - name: Build Manifest, JSON Chunks, and Orama Index
         run: |
@@ -38,7 +38,8 @@ jobs:
           import path from 'path';
           import { marked } from 'marked';
           import { create, insert, save } from '@orama/orama';
-          import { pipeline } from '@xenova/transformers';
+          import '@tensorflow/tfjs-node';
+          import * as use from '@tensorflow-models/universal-sentence-encoder';
 
           const sourceDir = path.join(process.cwd(), 'docs');
           const outputDir = path.join(process.cwd(), 'src', 'assets', 'docs');
@@ -53,8 +54,8 @@ jobs:
           }
 
           async function build() {
-            console.log('Loading embedding model...');
-            const extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+            console.log('Loading Universal Sentence Encoder...');
+            const extractor = await use.load();
 
             const db = await create({
               schema: {
@@ -62,7 +63,7 @@ jobs:
                 title: 'string',
                 category: 'string',
                 content: 'string',
-                embeddings: 'vector[384]'   // all-MiniLM-L6-v2 is 384 dimensions
+                embeddings: 'vector[512]'
               }
             });
 
@@ -91,16 +92,15 @@ jobs:
                     JSON.stringify({ id: slug, html: htmlContent })
                   );
 
-                  // Generate embeddings using lighter model
-                  const textToEmbed = `${title}. ${rawContent.slice(0, 512)}`;
-                  const output = await extractor(textToEmbed, { pooling: 'mean', normalize: true });
-                  const vectorArray = Array.from(output.data);
+                  const textToEmbed = `${title}. ${rawContent}`;
+                  const tensor = await extractor.embed([textToEmbed]);
+                  const vectorArray = Array.from(tensor.dataSync());
 
                   await insert(db, {
                     id: slug,
                     title,
                     category,
-                    content: rawContent.slice(0, 500),
+                    content: rawContent,
                     embeddings: vectorArray
                   });
 
