@@ -1,0 +1,127 @@
+<div class="teamspace-layout">
+    <!-- Top Bar -->
+    <header class="teamspace-header">
+        <div class="header-left">
+            <button class="back-btn" (click)="goBack()" title="Back to Desk">
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"></path>
+                </svg>
+            </button>
+            <h1 class="header-title">📚 TeamSpace <span *ngIf="lastUpdated" class="last-updated">Synced: {{ lastUpdated
+                    | date:'mediumDate' }}</span></h1>
+        </div>
+
+        <!-- Dynamic Filters -->
+        <div class="header-filters">
+            <button *ngFor="let cat of availableCategories" class="filter-btn" [class.active]="activeCategory === cat"
+                (click)="setCategory(cat)">
+                {{ cat | titlecase }}
+            </button>
+        </div>
+    </header>
+
+    <div class="teamspace-body">
+        <!-- Sidebar -->
+        <aside class="teamspace-sidebar">
+
+            <div class="search-container">
+                <span class="search-icon" *ngIf="!isSearching">🔍</span>
+                <div class="search-spinner" *ngIf="isSearching"></div>
+                <input type="text" class="search-input" placeholder="Search your team's notes..."
+                    [(ngModel)]="searchQuery" (ngModelChange)="onSearchChange($event)">
+            </div>
+
+            <div class="file-list" [class.mobile-hidden]="!searchQuery">
+                <div class="empty-state" *ngIf="filteredFiles.length === 0">
+                    No notes found.
+                </div>
+                <div class="file-card" *ngFor="let file of filteredFiles"
+                    [class.active]="!isAiMode && selectedFile?.id === file.id" (click)="selectFile(file)">
+                    <div class="file-header">
+                        <div class="header-main">
+                            <span class="file-title">{{ file.title }}</span>
+                            <span class="match-score" *ngIf="file.matchScore">{{ getMatchPercentage(file.matchScore) }}
+                                match</span>
+                        </div>
+                        <span class="file-badge" [ngStyle]="{'background': getCategoryColor(file.category)}">{{
+                            file.category }}</span>
+                    </div>
+                    <div class="file-excerpt">{{ file.excerpt }}</div>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <button class="ai-toggle-btn" [class.active]="isAiMode" (click)="toggleAiMode()">
+                    <span class="ai-icon">✨</span>
+                    <span class="ai-label">Ask AI</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="teamspace-viewer" [class.ai-mode]="isAiMode">
+            <!-- AI Mode View -->
+            <div class="ai-container" *ngIf="isAiMode">
+                <div class="ai-chat-history" #scrollContainer>
+                    <div class="ai-empty-state" *ngIf="aiMessages.length === 0">
+                        <div class="ai-welcome">
+                            <span class="welcome-icon">🧠</span>
+                            <h2>How can I help you today?</h2>
+                            <p>Ask anything about your team's notes and documentation.</p>
+                        </div>
+                    </div>
+
+                    <div class="message-row" *ngFor="let msg of aiMessages" [class.user]="msg.role === 'user'">
+                        <div class="message-avatar">
+                            {{ msg.role === 'user' ? '👤' : '🤖' }}
+                        </div>
+                        <div class="message-content">
+                            <div class="markdown-body" *ngIf="msg.role === 'assistant'" [innerHTML]="msg.content"></div>
+                            <div class="user-text" *ngIf="msg.role === 'user'">{{ msg.content }}</div>
+                        </div>
+                    </div>
+
+                    <div class="message-row assistant thinking" *ngIf="isAiThinking">
+                        <div class="message-avatar">🤖</div>
+                        <div class="message-content">
+                            <div class="typing-indicator">
+                                <span></span><span></span><span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ai-input-container">
+                    <div class="ai-input-wrapper">
+                        <textarea class="ai-textarea" placeholder="How can I help you?" [(ngModel)]="aiQuery"
+                            (keydown.enter)="$event.preventDefault(); onAskAi()"></textarea>
+                        <button class="send-btn" (click)="onAskAi()" [disabled]="!aiQuery.trim() || isAiThinking">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="ai-disclaimer">AI can make mistakes. Verify important information.</p>
+                </div>
+            </div>
+
+            <!-- Legacy Note View -->
+            <ng-container *ngIf="!isAiMode">
+                <div class="empty-viewer" *ngIf="!selectedFile">
+                    Select a note from the sidebar to view it here.
+                </div>
+
+                <div class="content-wrapper" *ngIf="selectedFile">
+                    <!-- The pre-rendered HTML injected here safely -->
+                    <div class="markdown-body" *ngIf="selectedChunkHtml" [innerHTML]="selectedChunkHtml"></div>
+                    <div class="loading-state" *ngIf="!selectedChunkHtml">
+                        <div class="spinner"></div> Loading content...
+                    </div>
+                </div>
+            </ng-container>
+        </main>
+    </div>
+</div>
