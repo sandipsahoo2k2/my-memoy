@@ -198,11 +198,21 @@ export class TeamSpaceComponent implements OnInit, OnDestroy, AfterViewChecked {
     // 1. Search for context
     let context = "No specific team notes found for this query.";
     if (this.teamSpaceService.searchReady) {
-      const oramaRes = await this.teamSpaceService.searchIndex(userMsg);
+      // Clean query for better retrieval: remove question words and common stop words
+      const stopWords = ['what', 'where', 'how', 'when', 'who', 'why', 'is', 'are', 'the', 'a', 'an', 'in', 'on', 'at', 'can', 'i', 'for', 'to', 'of'];
+      const searchTerms = userMsg.toLowerCase()
+        .replace(/[?.,!]/g, '')
+        .split(/\s+/)
+        .filter(word => !stopWords.includes(word))
+        .join(' ');
+
+      const contextQuery = searchTerms || userMsg; // Fallback to original if searchTerms empty
+
+      const oramaRes = await this.teamSpaceService.searchIndex(contextQuery);
       if (oramaRes && oramaRes.hits && oramaRes.hits.length > 0) {
-        // Collect text from top 3 hits
+        // Collect text from top 4 hits for better context
         const contextChunks: string[] = [];
-        for (const hit of oramaRes.hits.slice(0, 3)) {
+        for (const hit of oramaRes.hits.slice(0, 4)) {
           const doc = hit.document as any;
           contextChunks.push(`Note: ${doc.title}\nContent: ${doc.content}`);
         }
